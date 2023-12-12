@@ -10,7 +10,7 @@ GO;
 EXEC SelectAllPatients;
 
 -- Patient ============================================
-
+-- Add new columns to hold the encrypted data.
 ALTER TABLE Patient ADD PassportNumber_Encrypted VARBINARY(MAX);
 ALTER TABLE Patient ADD PaymentCardNumber_Encrypted VARBINARY(MAX);
 ALTER TABLE Patient ADD PaymentCardPinCode_Encrypted VARBINARY(MAX);

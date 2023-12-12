@@ -29,26 +29,49 @@ go
 select * from sys.certificates
 
 -- 3. Update existing records with encrypted data using ENCRYPTBYCERT
-UPDATE Patient
-SET 
-    PassportNumber_Encrypted = ENCRYPTBYCERT(CERT_ID('Cert_Patient'), PPassportNumber),
-    PaymentCardNumber_Encrypted = ENCRYPTBYCERT(CERT_ID('Cert_Patient'), PaymentCardNumber), 
-    PaymentCardPinCode_Encrypted = ENCRYPTBYCERT(CERT_ID('Cert_Patient'), PaymentCardPinCode)
+-- Create or replace the existing trigger for Patient table
+CREATE TRIGGER EncryptPatientData
+ON Patient
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    IF TRIGGER_NESTLEVEL() > 1
+        RETURN
+    -- Iterate through each row in the inserted table
+    DECLARE cur CURSOR LOCAL FOR 
+        SELECT PID, PPassportNumber, PaymentCardNumber, PaymentCardPinCode 
+        FROM inserted;
 
--- 4. Test : Decrypting data using DECRYPTBYCERT for demonstration
-SELECT 
-    PID, 
-    CONVERT(VARCHAR(100), DECRYPTBYCERT(CERT_ID('Cert_Patient'), PaymentCardNumber_Encrypted)) AS DecryptedCardNumber, 
-    CONVERT(VARCHAR(50), DECRYPTBYCERT(CERT_ID('Cert_Patient'), PassportNumber_Encrypted)) AS DecryptedPassportNumber,
-    CONVERT(VARCHAR(50), DECRYPTBYCERT(CERT_ID('Cert_Patient'), PaymentCardPinCode_Encrypted)) AS DecryptedPaymentCardPinCode
-FROM Patient
--- WHERE PID = 'P20001' OR PID = 'P20002';
+    OPEN cur;
+    DECLARE @PatientID VARCHAR(6), @PassportNumber VARCHAR(50), @PaymentCardNumber VARCHAR(20), @PaymentCardPinCode VARCHAR(50);
 
--- 5. Remove previous unencrypted columns
-ALTER TABLE Patient DROP COLUMN PPassportNumber;
-ALTER TABLE Patient DROP COLUMN PaymentCardNumber;
-ALTER TABLE Patient DROP COLUMN PaymentCardPinCode;
+    FETCH NEXT FROM cur INTO @PatientID, @PassportNumber, @PaymentCardNumber, @PaymentCardPinCode;
 
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        -- Perform the encryption and update the Patient table
+        UPDATE Patient
+        SET 
+            PassportNumber_Encrypted = ENCRYPTBYCERT(CERT_ID('Cert_Patient'), @PassportNumber),
+            PaymentCardNumber_Encrypted = ENCRYPTBYCERT(CERT_ID('Cert_Patient'), @PaymentCardNumber),
+            PaymentCardPinCode_Encrypted = ENCRYPTBYCERT(CERT_ID('Cert_Patient'), @PaymentCardPinCode),
+            PPassportNumber = 'N/A',
+            PaymentCardNumber = 'N/A',
+            PaymentCardPinCode = 'N/A' 
+        WHERE PID = @PatientID;
+
+        -- Fetch the next row
+        FETCH NEXT FROM cur INTO @PatientID, @PassportNumber, @PaymentCardNumber, @PaymentCardPinCode;
+    END;
+
+    CLOSE cur;
+    DEALLOCATE cur;
+END;
+GO
+
+EXEC EncryptPatientData;
+
+-- view
 EXEC SelectAllPatients
 
 -- Staff ============================================
@@ -75,20 +98,44 @@ go
 select * from sys.certificates
 
 -- 3. Update existing records with encrypted data using ENCRYPTBYCERT
-UPDATE Staff
-SET 
-    SPassportNumber_Encrypted = ENCRYPTBYCERT(CERT_ID('Cert_Staff'), SPassportNumber)
+CREATE TRIGGER EncryptStaffData
+ON Staff
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    IF TRIGGER_NESTLEVEL() > 1
+        RETURN
+    -- Iterate through each row in the inserted table
+    DECLARE cur CURSOR LOCAL FOR 
+        SELECT StaffID, SPassportNumber
+        FROM inserted;
 
--- 4. Test : Decrypting data using DECRYPTBYCERT for demonstration
-SELECT 
-    StaffID,  
-    CONVERT(VARCHAR(50), DECRYPTBYCERT(CERT_ID('Cert_Staff'), SPassportNumber_Encrypted)) AS DecryptedPassportNumber
-FROM Staff
+    OPEN cur;
+    DECLARE @StaffID VARCHAR(6), @PassportNumber VARCHAR(50);
 
--- 5. Remove previous unencrypted columns
-ALTER TABLE Staff DROP COLUMN SPassportNumber;
+    FETCH NEXT FROM cur INTO @StaffID, @PassportNumber;
 
-EXEC SelectAllStaff
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        -- Perform the encryption and update the Staff table
+        UPDATE Staff
+        SET 
+            SPassportNumber_Encrypted = ENCRYPTBYCERT(CERT_ID('Cert_Staff'), @PassportNumber),
+            SPassportNumber = 'N/A'
+        WHERE StaffID = @StaffID;
+
+        -- Fetch the next row
+        FETCH NEXT FROM cur INTO @StaffID, @PassportNumber;
+    END;
+
+    CLOSE cur;
+    DEALLOCATE cur;
+END;
+GO
+
+EXEC EncryptStaffData;
+
+EXEC SelectAllStaff;
 
 /****** 
 Protect the data before passing a copy of the database to the development team.
@@ -109,24 +156,47 @@ WITH SUBJECT = 'Patient Data Encryption(name and phone numbers)';
 GO
 SELECT * FROM sys.certificates
 
--- Encrypt
-UPDATE dbo.Patient
-SET 
-    PName_Encrypted = ENCRYPTBYCERT(CERT_ID('PatientDataCertificate'), PName),
-    PhoneNumber_Encrypted = ENCRYPTBYCERT(CERT_ID('PatientDataCertificate'), PPhone);
+-- Create or replace the existing trigger for Patient table
+CREATE TRIGGER EncryptPatientDataDev
+ON Patient
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    IF TRIGGER_NESTLEVEL() > 1
+        RETURN
+    -- Iterate through each row in the inserted table
+    DECLARE cur CURSOR LOCAL FOR 
+        SELECT PID, PName, PPhone
+        FROM inserted;
 
-EXEC SelectAllPatients;
+    OPEN cur;
+    DECLARE @PatientID VARCHAR(6), @Name VARCHAR(100), @Phone VARCHAR(12);
+
+    FETCH NEXT FROM cur INTO @PatientID, @Name, @Phone;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        -- Perform the encryption and update the Patient table
+        UPDATE Patient
+        SET 
+            PName_Encrypted = ENCRYPTBYCERT(CERT_ID('PatientDataCertificate'), @Name),
+            PhoneNumber_Encrypted = ENCRYPTBYCERT(CERT_ID('PatientDataCertificate'), @Phone),
+            PName = 'N/A',
+            PPhone = 'N/A' 
+        WHERE PID = @PatientID;
+
+        -- Fetch the next row
+        FETCH NEXT FROM cur INTO @PatientID, @Name, @Phone;
+    END;
+
+    CLOSE cur;
+    DEALLOCATE cur;
+END;
+GO
+
+EXEC EncryptPatientDataDev
 
 -- Decrypt
-SELECT 
-    PID, 
-    CONVERT(VARCHAR(100), DECRYPTBYCERT(CERT_ID('PatientDataCertificate'), PName_Encrypted)) AS DecryptedName,
-    CONVERT(VARCHAR(12), DECRYPTBYCERT(CERT_ID('PatientDataCertificate'), PhoneNumber_Encrypted)) AS DecryptedPhone
-FROM Patient;
-
--- Delete columns
-ALTER TABLE Patient DROP COLUMN PName;
-ALTER TABLE Patient DROP COLUMN PPhone;
 
 -- View
 EXEC SelectAllPatients;
@@ -148,26 +218,55 @@ GO
 SELECT * FROM sys.certificates
 
 -- Encrypt
-UPDATE dbo.Staff
-SET 
-    SName_Encrypted = ENCRYPTBYCERT(CERT_ID('StaffDataCertificate'), SName),
-    SPhone_Encrypted = ENCRYPTBYCERT(CERT_ID('StaffDataCertificate'), SPhone),
-    SystemUserID_Encrypted = ENCRYPTBYCERT(CERT_ID('StaffDataCertificate'), SystemUserID);
+CREATE TRIGGER EncryptStaffDataDev
+ON Staff
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    IF TRIGGER_NESTLEVEL() > 1
+        RETURN
 
-EXEC SelectAllStaff;
+    -- Perform the encryption in a set-based manner
+    UPDATE s
+    SET 
+        SName_Encrypted = ENCRYPTBYCERT(CERT_ID('StaffDataCertificate'), i.SName),
+        SPhone_Encrypted = ENCRYPTBYCERT(CERT_ID('StaffDataCertificate'), i.SPhone),
+        SystemUserID_Encrypted = ENCRYPTBYCERT(CERT_ID('StaffDataCertificate'), i.SystemUserID),
+        SystemUserID = 'N/A', -- Setting default value after encryption
+        SName = 'N/A', -- Setting default value after encryption
+        SPhone = 'N/A'  -- Setting default value after encryption
+    FROM Staff s
+    INNER JOIN inserted i ON s.StaffID = i.StaffID;
+END;
+GO
+
+EXEC EncryptStaffDataDev;
 
 -- Decrypt
-SELECT 
-    StaffID, 
-    CONVERT(VARCHAR(100), DECRYPTBYCERT(CERT_ID('StaffDataCertificate'), SName_Encrypted)) AS DecryptedName,
-    CONVERT(VARCHAR(12), DECRYPTBYCERT(CERT_ID('StaffDataCertificate'), SPhone_Encrypted)) AS DecryptedPhone,
-    CONVERT(VARCHAR(12), DECRYPTBYCERT(CERT_ID('StaffDataCertificate'), SystemUserID_Encrypted)) AS DecryptedSystemUserID
-FROM Staff;
+-- Create or replace the existing stored procedure for decrypting and updating Staff data
+CREATE PROCEDURE DecryptStaffDataDev
+AS
+BEGIN
+    IF TRIGGER_NESTLEVEL() > 1
+        RETURN
+    -- Update using a set-based approach with CROSS APPLY
+    UPDATE s
+    SET 
+        SName = ISNULL(ca.DecryptedName, s.SName), -- Preserve original value if decryption returns NULL
+        SPhone = ISNULL(ca.DecryptedPhone, s.SPhone),
+        SystemUserID = ISNULL(ca.DecryptedSystemUserID, s.SystemUserID)
+    FROM Staff s
+    CROSS APPLY 
+    (
+        SELECT 
+            CONVERT(VARCHAR(100), DECRYPTBYCERT(CERT_ID('StaffDataCertificate'), s.SName_Encrypted)) AS DecryptedName,
+            CONVERT(VARCHAR(12), DECRYPTBYCERT(CERT_ID('StaffDataCertificate'), s.SPhone_Encrypted)) AS DecryptedPhone,
+            CONVERT(VARCHAR(12), DECRYPTBYCERT(CERT_ID('StaffDataCertificate'), s.SystemUserID_Encrypted)) AS DecryptedSystemUserID
+    ) AS ca
+END;
+GO
 
--- Delete columns
-ALTER TABLE Staff DROP COLUMN SName;
-ALTER TABLE Staff DROP COLUMN SPhone;
-ALTER TABLE Staff DROP COLUMN SystemUserID;
+EXEC DecryptStaffDataDev;
 
 -- View
 EXEC SelectAllStaff;
@@ -209,15 +308,6 @@ GO
 BACKUP DATABASE MedicalInfoSystem
 TO DISK = '/var/opt/mssql/data/MedicalInfoSystem.bak';  -- path for MAC OS
 GO
-
-/*****************************
-
-encrypt a column of data by using symmetric encryption ??
-
-*****************************/
-
-
-
 
 /************************************
 
@@ -295,40 +385,3 @@ WITH MOVE 'MedicalInfoSystem_Anonymise' TO '/var/opt/mssql/data/MedicalInfoSyste
 MOVE 'MedicalInfoSystem_Anonymise_Log' TO '/var/opt/mssql/data/MedicalInfoSystem_Anonymise_Log.ldf'
 Select * from sys.certificates
 
-
-
-/******************************************
-
-Note
-
-******************************************/
-/** 
-drop master key, private key and certificate
- **/
--- USE MedicalInfoSystem;
--- GO
--- ALTER DATABASE MedicalInfoSystem
--- SET ENCRYPTION OFF;
--- GO
-
--- USE MedicalInfoSystem;
--- GO
--- DROP DATABASE ENCRYPTION KEY;
--- GO
-
--- USE master;
--- GO
--- DROP CERTIFICATE MedicalInfoSystem;
--- GO
-
--- USE master;
--- GO
--- DROP MASTER KEY;
--- GO
-
--- -- Suspend TDE Scan to pause TDE enablement
--- USE master
--- GO
--- ALTER DATABASE MedicalInfoSystem
--- SET ENCRYPTION SUSPEND;
--- GO
