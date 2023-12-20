@@ -16,9 +16,10 @@ ALTER TABLE Patient ADD PaymentCardNumber_Encrypted VARBINARY(MAX);
 ALTER TABLE Patient ADD PaymentCardPinCode_Encrypted VARBINARY(MAX);
 
 -- Update existing records with encrypted data
----Step 1 - Create Master Key
+---Step 1 - Create Master Key 
 CREATE master key encryption BY password = 'QwErTy12345!@#$%'
 go
+
 SELECT * FROM sys.symmetric_keys
 go
 
@@ -27,6 +28,7 @@ CREATE Certificate Cert_Patient
 With Subject = 'Cert_For_Patient_Table'
 go
 select * from sys.certificates
+GO
 
 -- 3. Update existing records with encrypted data using ENCRYPTBYCERT
 -- Create or replace the existing trigger for Patient table
@@ -43,7 +45,8 @@ BEGIN
         FROM inserted;
 
     OPEN cur;
-    DECLARE @PatientID VARCHAR(6), @PassportNumber VARCHAR(50), @PaymentCardNumber VARCHAR(20), @PaymentCardPinCode VARCHAR(50);
+    DECLARE @PatientID VARCHAR(6), @PassportNumber VARCHAR(50), 
+    @PaymentCardNumber VARCHAR(20), @PaymentCardPinCode VARCHAR(50);
 
     FETCH NEXT FROM cur INTO @PatientID, @PassportNumber, @PaymentCardNumber, @PaymentCardPinCode;
 
@@ -75,6 +78,8 @@ EXEC EncryptPatientData;
 EXEC SelectAllPatients
 
 -- Staff ============================================
+GO
+
 CREATE PROCEDURE SelectAllStaff
 AS
 SELECT * FROM dbo.Staff
@@ -98,6 +103,8 @@ go
 select * from sys.certificates
 
 -- 3. Update existing records with encrypted data using ENCRYPTBYCERT
+GO
+
 CREATE TRIGGER EncryptStaffData
 ON Staff
 AFTER INSERT, UPDATE
@@ -157,6 +164,8 @@ GO
 SELECT * FROM sys.certificates
 
 -- Create or replace the existing trigger for Patient table
+GO
+
 CREATE TRIGGER EncryptPatientDataDev
 ON Patient
 AFTER INSERT, UPDATE
@@ -218,6 +227,8 @@ GO
 SELECT * FROM sys.certificates
 
 -- Encrypt
+GO
+
 CREATE TRIGGER EncryptStaffDataDev
 ON Staff
 AFTER INSERT, UPDATE
@@ -244,6 +255,8 @@ EXEC EncryptStaffDataDev;
 
 -- Decrypt
 -- Create or replace the existing stored procedure for decrypting and updating Staff data
+Go
+
 CREATE PROCEDURE DecryptStaffDataDev
 AS
 BEGIN
@@ -315,11 +328,13 @@ Backup Database
 
 ************************************/
 -- Create Backup 
+-- 1. create a master key if hasn't
 USE master;
 GO
 CREATE MASTER KEY ENCRYPTION BY PASSWORD = 'QWEqwe!@#123';
 GO
 
+-- 2. create a certificate
 CREATE CERTIFICATE MedicalInfoSystem_DB_Cert  
    WITH SUBJECT = 'MedicalInfoSystem_DB_Cert';  
 GO
@@ -383,5 +398,6 @@ RESTORE DATABASE MedicalInfoSystem_Anonymise
 FROM DISK = '/var/opt/mssql/data/MedicalInfoSystem.bak'
 WITH MOVE 'MedicalInfoSystem_Anonymise' TO '/var/opt/mssql/data/MedicalInfoSystem_Anonymise.mdf',
 MOVE 'MedicalInfoSystem_Anonymise_Log' TO '/var/opt/mssql/data/MedicalInfoSystem_Anonymise_Log.ldf'
+
 Select * from sys.certificates
 
